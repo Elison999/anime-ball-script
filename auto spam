@@ -1,0 +1,222 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Configurações
+local DETECTION_DISTANCE = 34.3
+local isSpamming = false
+
+-- Criar GUI de status
+local function createStatusGUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "AutoSpamStatus"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 80)
+    frame.Position = UDim2.new(0.5, -125, 0, 20)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    frame.BorderSizePixel = 3
+    frame.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = screenGui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = frame
+    
+    -- Indicador visual de arrasto
+    local dragIndicator = Instance.new("Frame")
+    dragIndicator.Size = UDim2.new(0, 30, 0, 4)
+    dragIndicator.Position = UDim2.new(20, -15, 0, 3)
+    dragIndicator.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    dragIndicator.BorderSizePixel = 0
+    dragIndicator.Parent = frame
+    
+    local dragCorner = Instance.new("UICorner")
+    dragCorner.CornerRadius = UDim.new(1, 0)
+    dragCorner.Parent = dragIndicator
+    
+    local statusText = Instance.new("TextLabel")
+    statusText.Size = UDim2.new(1, -10, 0, 35)
+    statusText.Position = UDim2.new(0, 5, 0, 10)
+    statusText.BackgroundTransparency = 1
+    statusText.Text = "🔴 AUTO SPAM: INATIVO"
+    statusText.TextColor3 = Color3.fromRGB(255, 85, 85)
+    statusText.TextSize = 20
+    statusText.Font = Enum.Font.GothamBold
+    statusText.TextStrokeTransparency = 0.5
+    statusText.Parent = frame
+    
+    local infoText = Instance.new("TextLabel")
+    infoText.Size = UDim2.new(1, -10, 0, 30)
+    infoText.Position = UDim2.new(0, 5, 0, 50)
+    infoText.BackgroundTransparency = 1
+    infoText.Text = "Aguardando..."
+    infoText.TextColor3 = Color3.fromRGB(200, 200, 200)
+    infoText.TextSize = 14
+    infoText.Font = Enum.Font.Gotham
+    infoText.Parent = frame
+    
+    return statusText, infoText
+end
+
+local statusText, infoText = createStatusGUI()
+
+-- Função para atualizar o status visual
+local function updateStatus(active, playerInRange, ballInRange, hasHL)
+    isSpamming = active
+    if active then
+        statusText.Text = "🟢 AUTO SPAM: ATIVO"
+        statusText.TextColor3 = Color3.fromRGB(85, 255, 85)
+        infoText.Text = "✅ Player | ✅ Ball | ✅ Highlight"
+        infoText.TextColor3 = Color3.fromRGB(150, 255, 150)
+    else
+        statusText.Text = "🔴 AUTO SPAM: INATIVO"
+        statusText.TextColor3 = Color3.fromRGB(255, 85, 85)
+        
+        local info = ""
+        if not playerInRange then
+            info = info .. "❌ Sem player"
+        else
+            info = info .. "✅ Player"
+        end
+        
+        if not ballInRange then
+            info = info .. " | ❌ Sem ball"
+        else
+            info = info .. " | ✅ Ball"
+        end
+        
+        if not hasHL then
+            info = info .. " | ❌ Sem Highlight"
+        else
+            info = info .. " | ✅ Highlight"
+        end
+        
+        infoText.Text = info
+        
+        if playerInRange and ballInRange and hasHL then
+            infoText.TextColor3 = Color3.fromRGB(150, 255, 150)
+        elseif (playerInRange and ballInRange) or (playerInRange and hasHL) or (ballInRange and hasHL) then
+            infoText.TextColor3 = Color3.fromRGB(255, 200, 100)
+        else
+            infoText.TextColor3 = Color3.fromRGB(255, 150, 150)
+        end
+    end
+end
+
+-- Função para executar o spam
+local function executeSpam()
+    local args = {
+        [1] = "SwordService",
+        [2] = "Block",
+        [3] = {
+            [1] = -0.759547233581543
+        }
+    }
+    
+    pcall(function()
+        ReplicatedStorage.Framework.RemoteFunction:InvokeServer(unpack(args))
+    end)
+end
+
+-- Função para verificar se tem Highlight na pasta do jogador
+local function hasHighlight()
+    local playerFolder = workspace:FindFirstChild(LocalPlayer.Name)
+    if playerFolder then
+        return playerFolder:FindFirstChildOfClass("Highlight") ~= nil
+    end
+    return false
+end
+
+-- Função para verificar se há algum player na distância
+local function checkPlayerDistance()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return false
+    end
+    
+    local hrp = character.HumanoidRootPart
+    
+    -- Verifica todos os players
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local otherHRP = player.Character:FindFirstChild("HumanoidRootPart")
+            if otherHRP then
+                local distance = (hrp.Position - otherHRP.Position).Magnitude
+                if distance <= DETECTION_DISTANCE then
+                    return true
+                end
+            end
+        end
+    end
+    
+    return false
+end
+
+-- Função para verificar distância até a ball mais próxima
+local function checkBallDistance()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        return false
+    end
+    
+    local hrp = character.HumanoidRootPart
+    local ballsFolder = workspace:FindFirstChild("Balls")
+    
+    if not ballsFolder then
+        return false
+    end
+    
+    -- Verifica se há alguma ball dentro da distância
+    for _, ball in pairs(ballsFolder:GetChildren()) do
+        if ball:IsA("BasePart") or ball:FindFirstChildWhichIsA("BasePart") then
+            local ballPart = ball:IsA("BasePart") and ball or ball:FindFirstChildWhichIsA("BasePart")
+            if ballPart then
+                local distance = (hrp.Position - ballPart.Position).Magnitude
+                if distance <= DETECTION_DISTANCE then
+                    return true
+                end
+            end
+        end
+    end
+    
+    return false
+end
+
+-- Loop principal
+local spamStarted = false
+local lastSpamTime = 0
+RunService.Heartbeat:Connect(function()
+    local playerInRange = checkPlayerDistance()
+    local ballInRange = checkBallDistance()
+    local hasHL = hasHighlight()
+    
+    -- Inicia o spam se TODAS as 3 condições forem atendidas
+    if playerInRange and ballInRange and hasHL then
+        spamStarted = true
+    end
+    
+    -- Para o spam se a ball sair da distância
+    if not ballInRange then
+        spamStarted = false
+    end
+    
+    -- Atualiza status visual
+    if spamStarted then
+        updateStatus(true, playerInRange, ballInRange, hasHL)
+        -- Spama 2x por frame para ser 2x mais rápido
+        executeSpam()
+        executeSpam()
+    else
+        updateStatus(false, playerInRange, ballInRange, hasHL)
+    end
+end)
+
+print("Sistema de Auto Spam iniciado!")
+print("Distância de detecção: " .. DETECTION_DISTANCE .. " studs")
+print("Condições necessárias: Player + Ball + Highlight")
